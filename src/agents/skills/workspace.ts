@@ -113,6 +113,7 @@ export function sanitizeForFilename(input: string): string {
  * patterns in this module).
  */
 export function loadSkillMemory(skillBaseDir: string, deliveryContext?: DeliveryContext): string {
+  const skillName = path.basename(skillBaseDir);
   const sections: string[] = [];
 
   // Load shared defaults
@@ -121,6 +122,7 @@ export function loadSkillMemory(skillBaseDir: string, deliveryContext?: Delivery
     const defaults = fs.readFileSync(defaultsPath, "utf-8").trim();
     if (defaults) {
       sections.push(`## Skill Defaults\n\n${defaults}`);
+      skillsLogger.debug(`skill memory: ${skillName} defaults loaded (${defaults.length} chars)`);
     }
   } catch {
     // File doesn't exist — no defaults
@@ -134,10 +136,15 @@ export function loadSkillMemory(skillBaseDir: string, deliveryContext?: Delivery
       const userMemory = fs.readFileSync(userPath, "utf-8").trim();
       if (userMemory) {
         sections.push(`## User Memory\n\n${userMemory}`);
+        skillsLogger.debug(
+          `skill memory: ${skillName} user=${userId} loaded (${userMemory.length} chars)`,
+        );
       }
     } catch {
       // File doesn't exist — no user memory
     }
+  } else {
+    skillsLogger.debug(`skill memory: ${skillName} skipped user memory (no delivery context)`);
   }
 
   return sections.join("\n\n");
@@ -382,6 +389,10 @@ export function resolveSkillsPromptForRun(params: {
       }
     }
     if (memoryParts.length > 0) {
+      skillsLogger.debug(
+        `skill memory resolved: ${memoryParts.length} skill(s) with memory, ` +
+          `user=${params.deliveryContext?.channel}_${params.deliveryContext?.senderId}`,
+      );
       const memoryBlock = memoryParts.join("\n\n");
       return basePrompt ? `${basePrompt}\n\n${memoryBlock}` : memoryBlock;
     }

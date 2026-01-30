@@ -312,6 +312,8 @@ export async function runEmbeddedPiAgent(
             groupId: params.groupId,
             groupChannel: params.groupChannel,
             groupSpace: params.groupSpace,
+            senderId: params.senderId,
+            senderName: params.senderName,
             spawnedBy: params.spawnedBy,
             currentChannelId: params.currentChannelId,
             currentThreadTs: params.currentThreadTs,

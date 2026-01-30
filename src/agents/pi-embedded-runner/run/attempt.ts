@@ -186,6 +186,11 @@ export async function runEmbeddedAttempt(
       params.messageChannel ?? params.messageProvider,
       params.senderId ?? undefined,
     );
+    if (userTier) {
+      log.debug(
+        `user tier resolved: ${params.messageChannel ?? params.messageProvider}_${params.senderId} → ${userTier} (agent=${tierAgentId})`,
+      );
+    }
 
     const skillDeliveryContext =
       params.senderId && (params.messageChannel || params.messageProvider)
