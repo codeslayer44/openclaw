@@ -68,27 +68,11 @@ export type SkillMemoryWriteEntry = {
   append: string;
 };
 
-export type SkillScope =
-  | "conversation-only"
-  | "read-only"
-  | "workspace"
-  | "read-write"
-  | "full"
-  | "custom";
-
-export type SkillPermissions = {
-  scope: SkillScope;
-  tools?: { allow?: string[]; deny?: string[] };
-  delegation: "opus" | "none" | "any";
-  external: "none" | "read" | "full";
-};
-
 export type SkillEntry = {
   skill: Skill;
   frontmatter: ParsedSkillFrontmatter;
   metadata?: MoltbotSkillMetadata;
   invocation?: SkillInvocationPolicy;
-  permissions?: SkillPermissions;
 };
 
 export type SkillEligibilityContext = {
@@ -98,7 +82,6 @@ export type SkillEligibilityContext = {
     hasAnyBin: (bins: string[]) => boolean;
     note?: string;
   };
-  userTier?: import("../user-tier.js").UserTier;
 };
 
 export type SkillSnapshot = {
@@ -106,8 +89,6 @@ export type SkillSnapshot = {
   skills: Array<{ name: string; primaryEnv?: string }>;
   resolvedSkills?: Skill[];
   version?: number;
-  /** Effective skill permissions (most restrictive of all loaded skills). */
-  activePermissions?: SkillPermissions;
   /** Concatenated skill memory content (defaults + per-user) loaded at prompt resolution. */
   memoryPrompt?: string;
 };

@@ -135,12 +135,6 @@ export const AgentDefaultsSchema = z
       .optional(),
     heartbeat: HeartbeatSchema,
     maxConcurrent: z.number().int().positive().optional(),
-    users: z
-      .object({
-        defaultDelegationModel: z.string().optional(),
-      })
-      .strict()
-      .optional(),
     subagents: z
       .object({
         maxConcurrent: z.number().int().positive().optional(),

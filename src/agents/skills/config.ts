@@ -3,8 +3,6 @@ import path from "node:path";
 import type { MoltbotConfig, SkillConfig } from "../../config/config.js";
 import { resolveSkillKey } from "./frontmatter.js";
 import type { SkillEligibilityContext, SkillEntry } from "./types.js";
-import { isScopeWithinCeiling, TIER_SCOPE_CEILING } from "../user-tier.js";
-
 const DEFAULT_CONFIG_VALUES: Record<string, boolean> = {
   "browser.enabled": true,
   "browser.evaluateEnabled": true,
@@ -145,15 +143,6 @@ export function shouldIncludeSkill(params: {
   if (requiredConfig.length > 0) {
     for (const configPath of requiredConfig) {
       if (!isConfigPathTruthy(config, configPath)) return false;
-    }
-  }
-
-  // User tier scope ceiling: exclude skills whose scope exceeds the user's ceiling.
-  // No userTier → no filtering (backward compatible with API/group chat sessions).
-  if (eligibility?.userTier && entry.permissions?.scope) {
-    const ceiling = TIER_SCOPE_CEILING[eligibility.userTier];
-    if (!isScopeWithinCeiling(entry.permissions.scope, ceiling)) {
-      return false;
     }
   }
 

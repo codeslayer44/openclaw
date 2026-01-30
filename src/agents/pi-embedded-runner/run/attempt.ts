@@ -53,8 +53,6 @@ import {
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
-import { resolveUserTier } from "../../user-tier.js";
-
 import { isAbortError } from "../abort.js";
 import { buildEmbeddedExtensionPaths } from "../extensions.js";
 import { applyExtraParamsToAgent } from "../extra-params.js";
@@ -175,23 +173,6 @@ export async function runEmbeddedAttempt(
           config: params.config,
         });
 
-    // Resolve user tier for tool/permission gating and delegation override.
-    const tierAgentId = resolveSessionAgentIds({
-      sessionKey: params.sessionKey,
-      config: params.config,
-    }).sessionAgentId;
-    const tierAgentConfig = resolveAgentConfig(params.config ?? {}, tierAgentId);
-    const userTier = resolveUserTier(
-      tierAgentConfig,
-      params.messageChannel ?? params.messageProvider,
-      params.senderId ?? undefined,
-    );
-    if (userTier) {
-      log.debug(
-        `user tier resolved: ${params.messageChannel ?? params.messageProvider}_${params.senderId} → ${userTier} (agent=${tierAgentId})`,
-      );
-    }
-
     const skillDeliveryContext =
       params.senderId && (params.messageChannel || params.messageProvider)
         ? {
@@ -260,18 +241,6 @@ export async function runEmbeddedAttempt(
           replyToMode: params.replyToMode,
           hasRepliedRef: params.hasRepliedRef,
           modelHasVision,
-          skillPermissions: params.skillsSnapshot?.activePermissions,
-          userTier,
-          bypassSkillPermissions: Boolean(params.config?.debug?.bypassSkillPermissions),
-          skillBaseDirs: (() => {
-            const resolved = params.skillsSnapshot?.resolvedSkills;
-            if (!resolved || resolved.length === 0) return undefined;
-            const dirs: Record<string, string> = {};
-            for (const s of resolved) {
-              dirs[s.name] = s.baseDir;
-            }
-            return dirs;
-          })(),
           skillMemoryContext: (() => {
             const resolvedSkills = params.skillsSnapshot?.resolvedSkills;
             if (!resolvedSkills || resolvedSkills.length === 0) return undefined;
@@ -282,7 +251,6 @@ export async function runEmbeddedAttempt(
             return {
               skills: resolvedSkills.map((s) => ({ name: s.name, baseDir: s.baseDir })),
               userId,
-              userTier,
             };
           })(),
         });

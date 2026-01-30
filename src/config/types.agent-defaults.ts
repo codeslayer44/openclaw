@@ -196,11 +196,6 @@ export type AgentDefaultsConfig = {
   };
   /** Max concurrent agent runs across all conversations. Default: 1 (sequential). */
   maxConcurrent?: number;
-  /** User tier configuration for skill/tool gating. */
-  users?: {
-    /** Default model for delegation when downgraded for default-tier users (provider/model). */
-    defaultDelegationModel?: string;
-  };
   /** Sub-agent defaults (spawned via sessions_spawn). */
   subagents?: {
     /** Max concurrent sub-agent runs (global lane: "subagent"). Default: 1. */

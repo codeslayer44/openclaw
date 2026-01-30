@@ -95,10 +95,6 @@ export type MoltbotConfig = {
   canvasHost?: CanvasHostConfig;
   talk?: TalkConfig;
   gateway?: GatewayConfig;
-  debug?: {
-    /** Bypass skill permission enforcement. Tools pass through regardless of skill scope. */
-    bypassSkillPermissions?: boolean;
-  };
 };
 
 export type ConfigValidationIssue = {

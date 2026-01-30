@@ -127,8 +127,6 @@ const SkillMemoryWriteSchema = Type.Object({
 export type SkillMemoryContext = {
   skills: Array<{ name: string; baseDir: string }>;
   userId: string;
-  /** User tier for memory write gating. Default users cannot write skill memory. */
-  userTier?: import("../user-tier.js").UserTier;
 };
 
 /**
@@ -148,12 +146,6 @@ export function createSkillMemoryWriteTool(context: SkillMemoryContext): AnyAgen
       "Persist durable user preferences to skill memory. Use when a user reveals a lasting preference (dietary needs, style preferences, etc.) that should be remembered across sessions. Do not store transient context.",
     parameters: SkillMemoryWriteSchema,
     execute: async (_toolCallId, args) => {
-      // Memory write gating: default-tier users cannot persist skill memory.
-      // Return a soft signal so Sonnet avoids promising to remember preferences.
-      if (context.userTier === "default") {
-        return jsonResult({ ok: false, reason: "memory_not_available" });
-      }
-
       const params = args as { skill?: string; entries?: unknown };
       const skillName = typeof params.skill === "string" ? params.skill.trim() : "";
       if (!skillName) {

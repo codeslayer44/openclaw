@@ -15,8 +15,6 @@ export {
 } from "./skills/env-overrides.js";
 export { createSkillMemoryWriteTool, executeSkillMemoryWrite } from "./skills/memory-write.js";
 export type { SkillMemoryContext } from "./skills/memory-write.js";
-export { SkillPermissionLogger } from "./skills/permission-log.js";
-export type { SkillExclusionEntry } from "./skills/permission-log.js";
 export type {
   MoltbotSkillMetadata,
   SkillEligibilityContext,
@@ -24,8 +22,6 @@ export type {
   SkillEntry,
   SkillInstallSpec,
   SkillMemoryWriteEntry,
-  SkillPermissions,
-  SkillScope,
   SkillSnapshot,
   SkillsInstallPreferences,
 } from "./skills/types.js";

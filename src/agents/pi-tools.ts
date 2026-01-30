@@ -45,16 +45,12 @@ import {
   collectExplicitAllowlist,
   expandPolicyWithPluginGroups,
   normalizeToolName,
-  resolveSkillToolPolicy,
   resolveToolProfilePolicy,
   stripPluginOnlyAllowlist,
 } from "./tool-policy.js";
-import type { SkillPermissions } from "./skills/types.js";
 import { createSkillMemoryWriteTool, type SkillMemoryContext } from "./skills/memory-write.js";
-import { resolveUserTierToolPolicy, type UserTier } from "./user-tier.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import { logWarn } from "../logger.js";
-import { SkillPermissionLogger, type SkillExclusionEntry } from "./skills/permission-log.js";
 
 function isOpenAIProvider(provider?: string) {
   const normalized = provider?.trim().toLowerCase();
@@ -155,16 +151,8 @@ export function createMoltbotCodingTools(options?: {
   hasRepliedRef?: { value: boolean };
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
-  /** Active skill permissions to enforce as an additional tool filter layer. */
-  skillPermissions?: SkillPermissions;
   /** Skill memory context for the skill_memory_write tool (only when skills are active). */
   skillMemoryContext?: SkillMemoryContext;
-  /** User tier for tool policy gating and workspace path enforcement. */
-  userTier?: UserTier;
-  /** When true, skip skill permission enforcement (debug mode). Tools still log exclusions with [bypassed]. */
-  bypassSkillPermissions?: boolean;
-  /** Skill base directories keyed by name, for learnings.md writes on exclusion. */
-  skillBaseDirs?: Record<string, string>;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -216,15 +204,6 @@ export function createMoltbotCodingTools(options?: {
     isSubagentSessionKey(options?.sessionKey) && options?.sessionKey
       ? resolveSubagentToolPolicy(options.config)
       : undefined;
-  // Resolve skill permissions early so it can be included in the plugin
-  // allowlist and background-process eligibility checks.
-  const skillPolicy = options?.skillPermissions
-    ? resolveSkillToolPolicy(options.skillPermissions)
-    : undefined;
-  // Resolve user tier tool policy for per-user tool gating.
-  const userTierPolicy = options?.userTier
-    ? resolveUserTierToolPolicy(options.userTier)
-    : undefined;
   const allowBackground = isToolAllowedByPolicies("process", [
     profilePolicyWithAlsoAllow,
     providerProfilePolicyWithAlsoAllow,
@@ -235,17 +214,11 @@ export function createMoltbotCodingTools(options?: {
     groupPolicy,
     sandbox?.tools,
     subagentPolicy,
-    skillPolicy,
-    userTierPolicy,
   ]);
   const execConfig = resolveExecConfig(options?.config);
   const sandboxRoot = sandbox?.workspaceDir;
   const allowWorkspaceWrites = sandbox?.workspaceAccess !== "ro";
   const workspaceRoot = options?.workspaceDir ?? process.cwd();
-  // When a default-tier user has no Docker sandbox active, enforce workspace
-  // path boundaries on group:fs tools by creating sandboxed tool variants.
-  const tierSandboxRoot =
-    !sandbox?.enabled && options?.userTier === "default" ? workspaceRoot : undefined;
   const applyPatchConfig = options?.config?.tools?.exec?.applyPatch;
   const applyPatchEnabled =
     !!applyPatchConfig?.enabled &&
@@ -261,16 +234,12 @@ export function createMoltbotCodingTools(options?: {
       if (sandboxRoot) {
         return [createSandboxedReadTool(sandboxRoot)];
       }
-      if (tierSandboxRoot) {
-        return [createSandboxedReadTool(tierSandboxRoot)];
-      }
       const freshReadTool = createReadTool(workspaceRoot);
       return [createMoltbotReadTool(freshReadTool)];
     }
     if (tool.name === "bash" || tool.name === execToolName) return [];
     if (tool.name === "write") {
       if (sandboxRoot) return [];
-      if (tierSandboxRoot) return []; // sandboxed write added below
       // Wrap with param normalization for Claude Code compatibility
       return [
         wrapToolParamNormalization(createWriteTool(workspaceRoot), CLAUDE_PARAM_GROUPS.write),
@@ -278,7 +247,6 @@ export function createMoltbotCodingTools(options?: {
     }
     if (tool.name === "edit") {
       if (sandboxRoot) return [];
-      if (tierSandboxRoot) return []; // sandboxed edit added below
       // Wrap with param normalization for Claude Code compatibility
       return [wrapToolParamNormalization(createEditTool(workspaceRoot), CLAUDE_PARAM_GROUPS.edit)];
     }
@@ -322,21 +290,16 @@ export function createMoltbotCodingTools(options?: {
       ? null
       : createApplyPatchTool({
           cwd: sandboxRoot ?? workspaceRoot,
-          sandboxRoot:
-            (sandboxRoot && allowWorkspaceWrites ? sandboxRoot : undefined) ?? tierSandboxRoot,
+          sandboxRoot: sandboxRoot && allowWorkspaceWrites ? sandboxRoot : undefined,
         });
   const skillMemoryWriteTool = options?.skillMemoryContext
     ? createSkillMemoryWriteTool(options.skillMemoryContext)
     : null;
   const tools: AnyAgentTool[] = [
     ...base,
-    ...(sandboxRoot
-      ? allowWorkspaceWrites
-        ? [createSandboxedEditTool(sandboxRoot), createSandboxedWriteTool(sandboxRoot)]
-        : []
-      : tierSandboxRoot
-        ? [createSandboxedEditTool(tierSandboxRoot), createSandboxedWriteTool(tierSandboxRoot)]
-        : []),
+    ...(sandboxRoot && allowWorkspaceWrites
+      ? [createSandboxedEditTool(sandboxRoot), createSandboxedWriteTool(sandboxRoot)]
+      : []),
     ...(applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
     execTool as unknown as AnyAgentTool,
     processTool as unknown as AnyAgentTool,
@@ -370,8 +333,6 @@ export function createMoltbotCodingTools(options?: {
         groupPolicy,
         sandbox?.tools,
         subagentPolicy,
-        skillPolicy,
-        userTierPolicy,
       ]),
       currentChannelId: options?.currentChannelId,
       currentThreadTs: options?.currentThreadTs,
@@ -379,7 +340,6 @@ export function createMoltbotCodingTools(options?: {
       hasRepliedRef: options?.hasRepliedRef,
       modelHasVision: options?.modelHasVision,
       requesterAgentIdOverride: agentId,
-      userTier: options?.userTier,
     }),
   ];
   const coreToolNames = new Set(
@@ -424,7 +384,6 @@ export function createMoltbotCodingTools(options?: {
   const groupPolicyExpanded = resolvePolicy(groupPolicy, "group tools.allow");
   const sandboxPolicyExpanded = expandPolicyWithPluginGroups(sandbox?.tools, pluginGroups);
   const subagentPolicyExpanded = expandPolicyWithPluginGroups(subagentPolicy, pluginGroups);
-  const userTierPolicyExpanded = expandPolicyWithPluginGroups(userTierPolicy, pluginGroups);
 
   const toolsFiltered = profilePolicyExpanded
     ? filterToolsByPolicy(tools, profilePolicyExpanded)
@@ -453,58 +412,9 @@ export function createMoltbotCodingTools(options?: {
   const subagentFiltered = subagentPolicyExpanded
     ? filterToolsByPolicy(sandboxed, subagentPolicyExpanded)
     : sandboxed;
-  // User tier policy layer: restrict tools based on the messaging user's tier.
-  const userTierFiltered = userTierPolicyExpanded
-    ? filterToolsByPolicy(subagentFiltered, userTierPolicyExpanded)
-    : subagentFiltered;
-  // Skill permission layer: when a skill is active, restrict tools to those
-  // allowed by the skill's declared scope. This is the innermost filter —
-  // a skill can only restrict, never expand, the tools available from outer
-  // layers (agent profile, global policy, group policy, sandbox, subagent).
-  const skillPolicyExpanded = expandPolicyWithPluginGroups(skillPolicy, pluginGroups);
-  const bypassed = Boolean(options?.bypassSkillPermissions);
-  let skillFiltered: AnyAgentTool[];
-  if (bypassed) {
-    // Bypass: skip skill permission filtering but log what would be excluded.
-    skillFiltered = userTierFiltered;
-    if (skillPolicyExpanded && options?.skillPermissions) {
-      const wouldBeFiltered = filterToolsByPolicy(userTierFiltered, skillPolicyExpanded);
-      const excluded = userTierFiltered.filter(
-        (t) => !wouldBeFiltered.some((f) => f.name === t.name),
-      );
-      if (excluded.length > 0) {
-        const permLogger = new SkillPermissionLogger();
-        const entries: SkillExclusionEntry[] = excluded.map((t) => ({
-          skillName: options.skillPermissions!.scope,
-          skillBaseDir: "",
-          toolName: t.name,
-          scope: options.skillPermissions!.scope,
-          bypassed: true,
-        }));
-        permLogger.logExclusions(entries);
-      }
-    }
-  } else if (skillPolicyExpanded) {
-    // Normal enforcement: filter and log exclusions.
-    skillFiltered = filterToolsByPolicy(userTierFiltered, skillPolicyExpanded);
-    const excluded = userTierFiltered.filter((t) => !skillFiltered.some((f) => f.name === t.name));
-    if (excluded.length > 0 && options?.skillPermissions && options?.skillBaseDirs) {
-      const permLogger = new SkillPermissionLogger();
-      const entries: SkillExclusionEntry[] = excluded.map((t) => ({
-        skillName: Object.keys(options.skillBaseDirs!)[0] ?? options.skillPermissions!.scope,
-        skillBaseDir: Object.values(options.skillBaseDirs!)[0] ?? "",
-        toolName: t.name,
-        scope: options.skillPermissions!.scope,
-        bypassed: false,
-      }));
-      permLogger.logExclusions(entries);
-    }
-  } else {
-    skillFiltered = userTierFiltered;
-  }
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.
   // Without this, some providers (notably OpenAI) will reject root-level union schemas.
-  const normalized = skillFiltered.map(normalizeToolParameters);
+  const normalized = subagentFiltered.map(normalizeToolParameters);
   const withAbort = options?.abortSignal
     ? normalized.map((tool) => wrapToolWithAbortSignal(tool, options.abortSignal))
     : normalized;

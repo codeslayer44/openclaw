@@ -60,11 +60,6 @@ export type AgentConfig = {
     prune?: SandboxPruneSettings;
   };
   tools?: AgentToolsConfig;
-  /** Per-agent user tier lists. Users not listed default to the 'default' tier. */
-  users?: {
-    admins?: string[];
-    trusted?: string[];
-  };
 };
 
 export type AgentsConfig = {

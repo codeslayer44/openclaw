@@ -16,7 +16,6 @@ import {
   parseFrontmatter,
   resolveMoltbotMetadata,
   resolveSkillInvocationPolicy,
-  parseSkillPermissions,
 } from "./frontmatter.js";
 import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
@@ -26,10 +25,8 @@ import type {
   SkillEligibilityContext,
   SkillCommandSpec,
   SkillEntry,
-  SkillPermissions,
   SkillSnapshot,
 } from "./types.js";
-import { intersectToolPolicies, resolveSkillToolPolicy } from "../tool-policy.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -240,63 +237,9 @@ function loadSkillEntries(
       frontmatter,
       metadata: resolveMoltbotMetadata(frontmatter),
       invocation: resolveSkillInvocationPolicy(frontmatter),
-      permissions: rawContent ? parseSkillPermissions(rawContent) : undefined,
     };
   });
   return skillEntries;
-}
-
-/**
- * Compute the effective skill permissions from a set of loaded skill entries.
- *
- * When multiple skills are loaded, each skill's tool policy is intersected
- * to produce the most restrictive effective policy. Skills without parsed
- * permissions are treated as `conversation-only` (default, most restrictive).
- *
- * Returns `undefined` if no skills have restrictive permissions (all full or
- * no permissions blocks).
- */
-function resolveEffectiveSkillPermissions(entries: SkillEntry[]): SkillPermissions | undefined {
-  const withPermissions = entries.filter((e) => e.permissions != null);
-  if (withPermissions.length === 0) return undefined;
-
-  // If only one skill has permissions, use it directly
-  if (withPermissions.length === 1) return withPermissions[0].permissions;
-
-  // Multiple skills: intersect their tool policies to find effective permissions.
-  // Use the most restrictive scope as the label.
-  const policies = withPermissions.map((e) => resolveSkillToolPolicy(e.permissions!));
-  const effective = intersectToolPolicies(policies);
-
-  // Find the most restrictive scope for labeling
-  const SCOPE_ORDER: Record<string, number> = {
-    "conversation-only": 0,
-    "read-only": 1,
-    workspace: 2,
-    "read-write": 3,
-    full: 4,
-    custom: 4,
-  };
-  let lowestScope = withPermissions[0].permissions!;
-  for (const entry of withPermissions) {
-    const perm = entry.permissions!;
-    if ((SCOPE_ORDER[perm.scope] ?? 4) < (SCOPE_ORDER[lowestScope.scope] ?? 4)) {
-      lowestScope = perm;
-    }
-  }
-
-  return {
-    scope: lowestScope.scope,
-    tools:
-      effective.allow || effective.deny
-        ? {
-            allow: effective.allow,
-            deny: effective.deny,
-          }
-        : undefined,
-    delegation: lowestScope.delegation,
-    external: lowestScope.external,
-  };
 }
 
 export function buildWorkspaceSkillSnapshot(
@@ -325,12 +268,6 @@ export function buildWorkspaceSkillSnapshot(
   const resolvedSkills = promptEntries.map((entry) => entry.skill);
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
   const prompt = [remoteNote, formatSkillsForPrompt(resolvedSkills)].filter(Boolean).join("\n");
-  // NOTE: activePermissions is intentionally NOT pre-computed from the skill
-  // index. The design specifies per-skill enforcement — permissions apply when
-  // a specific skill is activated, not globally from all indexed skills.
-  // Pre-computing the intersection of all skills' permissions would lock the
-  // session to the most restrictive skill's scope (e.g., a conversation-only
-  // chef skill would prevent the agent from using ANY tools).
   return {
     prompt,
     skills: eligible.map((entry) => ({
