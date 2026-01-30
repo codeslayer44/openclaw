@@ -31,14 +31,16 @@ export const SCOPE_ORDER: Record<SkillScope, number> = {
  * Resolve a messaging platform user to a permission tier.
  *
  * Identity format: `{channel}_{senderId}` (e.g. `telegram_7338489031`).
- * If channel or senderId is missing, returns `'default'`.
+ * If channel or senderId is missing, returns `undefined` — no tier
+ * restrictions apply. This covers cron, heartbeat, API, and inter-agent
+ * sessions that have no messaging platform sender.
  */
 export function resolveUserTier(
   agentConfig: Pick<AgentConfig, "users"> | undefined,
   channel: string | undefined,
   senderId: string | undefined,
-): UserTier {
-  if (!channel || !senderId) return "default";
+): UserTier | undefined {
+  if (!channel || !senderId) return undefined;
   const userId = `${channel}_${senderId}`;
   const users = agentConfig?.users;
   if (!users) return "default";

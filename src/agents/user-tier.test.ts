@@ -48,16 +48,16 @@ describe("resolveUserTier", () => {
     expect(resolveUserTier(undefined, "telegram", "7338489031")).toBe("default");
   });
 
-  it("returns default when channel is undefined", () => {
-    expect(resolveUserTier(agentConfig, undefined, "7338489031")).toBe("default");
+  it("returns undefined when channel is undefined (no tier restrictions)", () => {
+    expect(resolveUserTier(agentConfig, undefined, "7338489031")).toBeUndefined();
   });
 
-  it("returns default when senderId is undefined", () => {
-    expect(resolveUserTier(agentConfig, "telegram", undefined)).toBe("default");
+  it("returns undefined when senderId is undefined (no tier restrictions)", () => {
+    expect(resolveUserTier(agentConfig, "telegram", undefined)).toBeUndefined();
   });
 
-  it("returns default when both channel and senderId are undefined", () => {
-    expect(resolveUserTier(agentConfig, undefined, undefined)).toBe("default");
+  it("returns undefined when both channel and senderId are undefined (no tier restrictions)", () => {
+    expect(resolveUserTier(agentConfig, undefined, undefined)).toBeUndefined();
   });
 
   it("is case-sensitive for user matching", () => {
