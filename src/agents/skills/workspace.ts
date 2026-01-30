@@ -16,16 +16,20 @@ import {
   parseFrontmatter,
   resolveMoltbotMetadata,
   resolveSkillInvocationPolicy,
+  parseSkillPermissions,
 } from "./frontmatter.js";
 import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
+import type { DeliveryContext } from "../../utils/delivery-context.js";
 import type {
   ParsedSkillFrontmatter,
   SkillEligibilityContext,
   SkillCommandSpec,
   SkillEntry,
+  SkillPermissions,
   SkillSnapshot,
 } from "./types.js";
+import { intersectToolPolicies, resolveSkillToolPolicy } from "../tool-policy.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -90,6 +94,53 @@ function resolveUniqueSkillCommandName(base: string, used: Set<string>): string 
   }
   const fallback = `${base.slice(0, Math.max(1, SKILL_COMMAND_MAX_LENGTH - 2))}_x`;
   return fallback;
+}
+
+/**
+ * Sanitize a string for use as a filename component.
+ * Preserves alphanumerics, `_`, `+`, `@`, `.`, and `-`.
+ * All other characters are replaced with `_`.
+ */
+export function sanitizeForFilename(input: string): string {
+  return input.replace(/[^a-zA-Z0-9_+@.\-]/g, "_");
+}
+
+/**
+ * Load skill memory files (defaults + per-user) from a skill's base directory.
+ *
+ * Returns concatenated content with section headers, or empty string if no
+ * memory files exist. Reads are synchronous (matching existing skill loading
+ * patterns in this module).
+ */
+export function loadSkillMemory(skillBaseDir: string, deliveryContext?: DeliveryContext): string {
+  const sections: string[] = [];
+
+  // Load shared defaults
+  const defaultsPath = path.join(skillBaseDir, "memory", "defaults.md");
+  try {
+    const defaults = fs.readFileSync(defaultsPath, "utf-8").trim();
+    if (defaults) {
+      sections.push(`## Skill Defaults\n\n${defaults}`);
+    }
+  } catch {
+    // File doesn't exist — no defaults
+  }
+
+  // Load per-user memory
+  if (deliveryContext?.channel && deliveryContext?.senderId) {
+    const userId = sanitizeForFilename(`${deliveryContext.channel}_${deliveryContext.senderId}`);
+    const userPath = path.join(skillBaseDir, "memory", "users", `${userId}.md`);
+    try {
+      const userMemory = fs.readFileSync(userPath, "utf-8").trim();
+      if (userMemory) {
+        sections.push(`## User Memory\n\n${userMemory}`);
+      }
+    } catch {
+      // File doesn't exist — no user memory
+    }
+  }
+
+  return sections.join("\n\n");
 }
 
 function loadSkillEntries(
@@ -158,9 +209,10 @@ function loadSkillEntries(
 
   const skillEntries: SkillEntry[] = Array.from(merged.values()).map((skill) => {
     let frontmatter: ParsedSkillFrontmatter = {};
+    let rawContent = "";
     try {
-      const raw = fs.readFileSync(skill.filePath, "utf-8");
-      frontmatter = parseFrontmatter(raw);
+      rawContent = fs.readFileSync(skill.filePath, "utf-8");
+      frontmatter = parseFrontmatter(rawContent);
     } catch {
       // ignore malformed skills
     }
@@ -169,9 +221,63 @@ function loadSkillEntries(
       frontmatter,
       metadata: resolveMoltbotMetadata(frontmatter),
       invocation: resolveSkillInvocationPolicy(frontmatter),
+      permissions: rawContent ? parseSkillPermissions(rawContent) : undefined,
     };
   });
   return skillEntries;
+}
+
+/**
+ * Compute the effective skill permissions from a set of loaded skill entries.
+ *
+ * When multiple skills are loaded, each skill's tool policy is intersected
+ * to produce the most restrictive effective policy. Skills without parsed
+ * permissions are treated as `conversation-only` (default, most restrictive).
+ *
+ * Returns `undefined` if no skills have restrictive permissions (all full or
+ * no permissions blocks).
+ */
+function resolveEffectiveSkillPermissions(entries: SkillEntry[]): SkillPermissions | undefined {
+  const withPermissions = entries.filter((e) => e.permissions != null);
+  if (withPermissions.length === 0) return undefined;
+
+  // If only one skill has permissions, use it directly
+  if (withPermissions.length === 1) return withPermissions[0].permissions;
+
+  // Multiple skills: intersect their tool policies to find effective permissions.
+  // Use the most restrictive scope as the label.
+  const policies = withPermissions.map((e) => resolveSkillToolPolicy(e.permissions!));
+  const effective = intersectToolPolicies(policies);
+
+  // Find the most restrictive scope for labeling
+  const SCOPE_ORDER: Record<string, number> = {
+    "conversation-only": 0,
+    "read-only": 1,
+    workspace: 2,
+    "read-write": 3,
+    full: 4,
+    custom: 4,
+  };
+  let lowestScope = withPermissions[0].permissions!;
+  for (const entry of withPermissions) {
+    const perm = entry.permissions!;
+    if ((SCOPE_ORDER[perm.scope] ?? 4) < (SCOPE_ORDER[lowestScope.scope] ?? 4)) {
+      lowestScope = perm;
+    }
+  }
+
+  return {
+    scope: lowestScope.scope,
+    tools:
+      effective.allow || effective.deny
+        ? {
+            allow: effective.allow,
+            deny: effective.deny,
+          }
+        : undefined,
+    delegation: lowestScope.delegation,
+    external: lowestScope.external,
+  };
 }
 
 export function buildWorkspaceSkillSnapshot(
@@ -200,6 +306,7 @@ export function buildWorkspaceSkillSnapshot(
   const resolvedSkills = promptEntries.map((entry) => entry.skill);
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
   const prompt = [remoteNote, formatSkillsForPrompt(resolvedSkills)].filter(Boolean).join("\n");
+  const activePermissions = resolveEffectiveSkillPermissions(eligible);
   return {
     prompt,
     skills: eligible.map((entry) => ({
@@ -208,6 +315,7 @@ export function buildWorkspaceSkillSnapshot(
     })),
     resolvedSkills,
     version: opts?.snapshotVersion,
+    activePermissions,
   };
 }
 
@@ -244,17 +352,38 @@ export function resolveSkillsPromptForRun(params: {
   entries?: SkillEntry[];
   config?: MoltbotConfig;
   workspaceDir: string;
+  deliveryContext?: DeliveryContext;
 }): string {
   const snapshotPrompt = params.skillsSnapshot?.prompt?.trim();
-  if (snapshotPrompt) return snapshotPrompt;
-  if (params.entries && params.entries.length > 0) {
-    const prompt = buildWorkspaceSkillsPrompt(params.workspaceDir, {
-      entries: params.entries,
-      config: params.config,
-    });
-    return prompt.trim() ? prompt : "";
+  const basePrompt = snapshotPrompt
+    ? snapshotPrompt
+    : params.entries && params.entries.length > 0
+      ? buildWorkspaceSkillsPrompt(params.workspaceDir, {
+          entries: params.entries,
+          config: params.config,
+        }).trim() || ""
+      : "";
+
+  // Load memory for each resolved skill and append to the prompt
+  const resolvedSkills =
+    params.skillsSnapshot?.resolvedSkills ?? params.entries?.map((e) => e.skill);
+  if (resolvedSkills && resolvedSkills.length > 0 && params.deliveryContext) {
+    const memoryParts: string[] = [];
+    for (const skill of resolvedSkills) {
+      const memory = loadSkillMemory(skill.baseDir, params.deliveryContext);
+      if (memory) {
+        memoryParts.push(
+          resolvedSkills.length > 1 ? `### Memory: ${skill.name}\n\n${memory}` : memory,
+        );
+      }
+    }
+    if (memoryParts.length > 0) {
+      const memoryBlock = memoryParts.join("\n\n");
+      return basePrompt ? `${basePrompt}\n\n${memoryBlock}` : memoryBlock;
+    }
   }
-  return "";
+
+  return basePrompt;
 }
 
 export function loadWorkspaceSkillEntries(

@@ -23,7 +23,7 @@ import { resolveUserPath } from "../../../utils.js";
 import { createCacheTrace } from "../../cache-trace.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import { resolveMoltbotAgentDir } from "../../agent-paths.js";
-import { resolveSessionAgentIds } from "../../agent-scope.js";
+import { resolveAgentConfig, resolveSessionAgentIds } from "../../agent-scope.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
 import { resolveMoltbotDocsPath } from "../../docs-path.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
@@ -48,10 +48,12 @@ import {
   applySkillEnvOverridesFromSnapshot,
   loadWorkspaceSkillEntries,
   resolveSkillsPromptForRun,
+  sanitizeForFilename,
 } from "../../skills.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
+import { resolveUserTier } from "../../user-tier.js";
 
 import { isAbortError } from "../abort.js";
 import { buildEmbeddedExtensionPaths } from "../extensions.js";
@@ -173,11 +175,32 @@ export async function runEmbeddedAttempt(
           config: params.config,
         });
 
+    // Resolve user tier for tool/permission gating and delegation override.
+    const tierAgentId = resolveSessionAgentIds({
+      sessionKey: params.sessionKey,
+      config: params.config,
+    }).sessionAgentId;
+    const tierAgentConfig = resolveAgentConfig(params.config ?? {}, tierAgentId);
+    const userTier = resolveUserTier(
+      tierAgentConfig,
+      params.messageChannel ?? params.messageProvider,
+      params.senderId ?? undefined,
+    );
+
+    const skillDeliveryContext =
+      params.senderId && (params.messageChannel || params.messageProvider)
+        ? {
+            channel: params.messageChannel ?? params.messageProvider,
+            senderId: params.senderId,
+            senderName: params.senderName ?? undefined,
+          }
+        : undefined;
     const skillsPrompt = resolveSkillsPromptForRun({
       skillsSnapshot: params.skillsSnapshot,
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
       config: params.config,
       workspaceDir: effectiveWorkspace,
+      deliveryContext: skillDeliveryContext,
     });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;
@@ -232,6 +255,31 @@ export async function runEmbeddedAttempt(
           replyToMode: params.replyToMode,
           hasRepliedRef: params.hasRepliedRef,
           modelHasVision,
+          skillPermissions: params.skillsSnapshot?.activePermissions,
+          userTier,
+          bypassSkillPermissions: Boolean(params.config?.debug?.bypassSkillPermissions),
+          skillBaseDirs: (() => {
+            const resolved = params.skillsSnapshot?.resolvedSkills;
+            if (!resolved || resolved.length === 0) return undefined;
+            const dirs: Record<string, string> = {};
+            for (const s of resolved) {
+              dirs[s.name] = s.baseDir;
+            }
+            return dirs;
+          })(),
+          skillMemoryContext: (() => {
+            const resolvedSkills = params.skillsSnapshot?.resolvedSkills;
+            if (!resolvedSkills || resolvedSkills.length === 0) return undefined;
+            if (!skillDeliveryContext?.channel || !skillDeliveryContext?.senderId) return undefined;
+            const userId = sanitizeForFilename(
+              `${skillDeliveryContext.channel}_${skillDeliveryContext.senderId}`,
+            );
+            return {
+              skills: resolvedSkills.map((s) => ({ name: s.name, baseDir: s.baseDir })),
+              userId,
+              userTier,
+            };
+          })(),
         });
     const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider });
     logToolSchemasForGoogle({ tools, provider: params.provider });

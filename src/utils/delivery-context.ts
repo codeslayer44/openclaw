@@ -6,6 +6,8 @@ export type DeliveryContext = {
   to?: string;
   accountId?: string;
   threadId?: string | number;
+  senderId?: string;
+  senderName?: string;
 };
 
 export type DeliveryContextSessionSource = {
@@ -14,6 +16,8 @@ export type DeliveryContextSessionSource = {
   lastTo?: string;
   lastAccountId?: string;
   lastThreadId?: string | number;
+  lastSenderId?: string;
+  lastSenderName?: string;
   deliveryContext?: DeliveryContext;
 };
 
@@ -33,13 +37,18 @@ export function normalizeDeliveryContext(context?: DeliveryContext): DeliveryCon
         : undefined;
   const normalizedThreadId =
     typeof threadId === "string" ? (threadId ? threadId : undefined) : threadId;
-  if (!channel && !to && !accountId && normalizedThreadId == null) return undefined;
+  const senderId = typeof context.senderId === "string" ? context.senderId.trim() : undefined;
+  const senderName = typeof context.senderName === "string" ? context.senderName.trim() : undefined;
+  if (!channel && !to && !accountId && normalizedThreadId == null && !senderId && !senderName)
+    return undefined;
   const normalized: DeliveryContext = {
     channel: channel || undefined,
     to: to || undefined,
     accountId,
   };
   if (normalizedThreadId != null) normalized.threadId = normalizedThreadId;
+  if (senderId) normalized.senderId = senderId;
+  if (senderName) normalized.senderName = senderName;
   return normalized;
 }
 
@@ -49,6 +58,8 @@ export function normalizeSessionDeliveryFields(source?: DeliveryContextSessionSo
   lastTo?: string;
   lastAccountId?: string;
   lastThreadId?: string | number;
+  lastSenderId?: string;
+  lastSenderName?: string;
 } {
   if (!source) {
     return {
@@ -57,6 +68,8 @@ export function normalizeSessionDeliveryFields(source?: DeliveryContextSessionSo
       lastTo: undefined,
       lastAccountId: undefined,
       lastThreadId: undefined,
+      lastSenderId: undefined,
+      lastSenderName: undefined,
     };
   }
 
@@ -66,6 +79,8 @@ export function normalizeSessionDeliveryFields(source?: DeliveryContextSessionSo
       to: source.lastTo,
       accountId: source.lastAccountId,
       threadId: source.lastThreadId,
+      senderId: source.lastSenderId,
+      senderName: source.lastSenderName,
     }),
     normalizeDeliveryContext(source.deliveryContext),
   );
@@ -77,6 +92,8 @@ export function normalizeSessionDeliveryFields(source?: DeliveryContextSessionSo
       lastTo: undefined,
       lastAccountId: undefined,
       lastThreadId: undefined,
+      lastSenderId: undefined,
+      lastSenderName: undefined,
     };
   }
 
@@ -86,6 +103,8 @@ export function normalizeSessionDeliveryFields(source?: DeliveryContextSessionSo
     lastTo: merged.to,
     lastAccountId: merged.accountId,
     lastThreadId: merged.threadId,
+    lastSenderId: merged.senderId,
+    lastSenderName: merged.senderName,
   };
 }
 
@@ -108,6 +127,8 @@ export function mergeDeliveryContext(
     to: normalizedPrimary?.to ?? normalizedFallback?.to,
     accountId: normalizedPrimary?.accountId ?? normalizedFallback?.accountId,
     threadId: normalizedPrimary?.threadId ?? normalizedFallback?.threadId,
+    senderId: normalizedPrimary?.senderId ?? normalizedFallback?.senderId,
+    senderName: normalizedPrimary?.senderName ?? normalizedFallback?.senderName,
   });
 }
 

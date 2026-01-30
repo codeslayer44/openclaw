@@ -446,6 +446,13 @@ export const AgentEntrySchema = z
       .optional(),
     sandbox: AgentSandboxSchema,
     tools: AgentToolsSchema,
+    users: z
+      .object({
+        admins: z.array(z.string()).optional(),
+        trusted: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import type { NormalizedChatType } from "../../channels/chat-type.js";
 import type { ChannelId } from "../../channels/plugins/types.js";
+import type { SkillPermissions } from "../../agents/skills/types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.js";
 import type { TtsAutoMode } from "../types.tts.js";
 
@@ -92,6 +93,8 @@ export type SessionEntry = {
   lastTo?: string;
   lastAccountId?: string;
   lastThreadId?: string | number;
+  lastSenderId?: string;
+  lastSenderName?: string;
   skillsSnapshot?: SessionSkillSnapshot;
   systemPromptReport?: SessionSystemPromptReport;
 };
@@ -118,6 +121,8 @@ export type SessionSkillSnapshot = {
   skills: Array<{ name: string; primaryEnv?: string }>;
   resolvedSkills?: Skill[];
   version?: number;
+  /** Effective skill permissions (most restrictive of all loaded skills). */
+  activePermissions?: SkillPermissions;
 };
 
 export type SessionSystemPromptReport = {

@@ -1,6 +1,7 @@
 import type { MoltbotConfig } from "../config/config.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import type { GatewayMessageChannel } from "../utils/message-channel.js";
+import type { UserTier } from "./user-tier.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
@@ -53,6 +54,8 @@ export function createMoltbotTools(options?: {
   modelHasVision?: boolean;
   /** Explicit agent ID override for cron/hook sessions. */
   requesterAgentIdOverride?: string;
+  /** User tier for delegation model override in sessions_spawn. */
+  userTier?: UserTier;
 }): AnyAgentTool[] {
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
@@ -129,6 +132,7 @@ export function createMoltbotTools(options?: {
       agentGroupSpace: options?.agentGroupSpace,
       sandboxed: options?.sandboxed,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,
+      userTier: options?.userTier,
     }),
     createSessionStatusTool({
       agentSessionKey: options?.agentSessionKey,

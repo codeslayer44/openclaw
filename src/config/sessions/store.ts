@@ -396,6 +396,10 @@ export async function updateLastRoute(params: {
     const store = loadSessionStore(storePath);
     const existing = store[sessionKey];
     const now = Date.now();
+    // Extract sender identity from MsgContext. For WhatsApp, prefer E.164 over JID
+    // to avoid filenames with @s.whatsapp.net.
+    const ctxSenderId = ctx?.SenderE164 || ctx?.SenderId;
+    const ctxSenderName = ctx?.SenderName;
     const explicitContext = normalizeDeliveryContext(params.deliveryContext);
     const inlineContext = normalizeDeliveryContext({
       channel,
@@ -411,6 +415,8 @@ export async function updateLastRoute(params: {
         to: merged?.to,
         accountId: merged?.accountId,
         threadId: merged?.threadId,
+        senderId: merged?.senderId ?? ctxSenderId?.trim(),
+        senderName: merged?.senderName ?? ctxSenderName?.trim(),
       },
     });
     const metaPatch = ctx
@@ -428,6 +434,8 @@ export async function updateLastRoute(params: {
       lastTo: normalized.lastTo,
       lastAccountId: normalized.lastAccountId,
       lastThreadId: normalized.lastThreadId,
+      lastSenderId: normalized.lastSenderId,
+      lastSenderName: normalized.lastSenderName,
     };
     const next = mergeSessionEntry(
       existing,

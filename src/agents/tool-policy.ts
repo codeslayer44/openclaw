@@ -232,3 +232,116 @@ export function resolveToolProfilePolicy(profile?: string): ToolProfilePolicy | 
     deny: resolved.deny ? [...resolved.deny] : undefined,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Skill permission → tool policy
+// ---------------------------------------------------------------------------
+
+import type { SkillPermissions, SkillScope } from "./skills/types.js";
+
+/**
+ * Maps each skill scope to the tool groups it allows.
+ * `null` means no restriction (full access). An empty array means no tools.
+ */
+export const SKILL_SCOPE_TOOL_GROUPS: Record<SkillScope, string[] | null> = {
+  "conversation-only": [],
+  "read-only": ["group:memory", "group:web"],
+  workspace: ["group:fs", "group:web", "image"],
+  "read-write": ["group:fs", "group:memory", "group:web", "image"],
+  full: null,
+  custom: null,
+};
+
+/**
+ * Convert a skill's parsed permissions into a `ToolPolicyLike` suitable for
+ * `filterToolsByPolicy`. Returns `undefined` when no restriction is needed
+ * (scope: full with no explicit tools block).
+ *
+ * When `delegation !== 'none'`, `sessions_spawn` is implicitly allowed so
+ * the core skill conversation arc (Sonnet → delegate → synthesis) works even
+ * for conversation-only skills.
+ */
+export function resolveSkillToolPolicy(permissions: SkillPermissions): ToolPolicyLike | undefined {
+  const scopeGroups = SKILL_SCOPE_TOOL_GROUPS[permissions.scope];
+
+  // Determine allow list
+  let allow: string[] | undefined;
+
+  if (permissions.tools?.allow) {
+    // Explicit tools.allow overrides scope defaults
+    allow = [...permissions.tools.allow];
+  } else if (scopeGroups !== null) {
+    // Use scope-defined groups (empty array = no tools from scope)
+    allow = [...scopeGroups];
+  }
+  // full/custom scope without explicit tools.allow → no allow restriction
+
+  // When delegation is enabled, ensure sessions_spawn is reachable
+  if (allow !== undefined && permissions.delegation !== "none") {
+    if (!allow.includes("sessions_spawn")) {
+      allow.push("sessions_spawn");
+    }
+  }
+
+  // Always allow skill_memory_write so skills can persist user preferences
+  // regardless of their declared scope. User-tier gating (C11) is applied
+  // inside the tool's execute function, not at the policy level.
+  if (allow !== undefined && !allow.includes("skill_memory_write")) {
+    allow.push("skill_memory_write");
+  }
+
+  // Determine deny list
+  const deny = permissions.tools?.deny ? [...permissions.tools.deny] : undefined;
+
+  // An empty allow list with no delegation means deny all tools
+  if (allow !== undefined && allow.length === 0) {
+    return { deny: ["*"] };
+  }
+
+  if (allow === undefined && !deny) return undefined;
+  return { allow, deny };
+}
+
+/**
+ * Intersect multiple tool policies into a single effective policy.
+ *
+ * Semantics:
+ * - `undefined` / `null` entries are treated as "no restriction from this layer"
+ * - Allowed = intersection of all layers that define an allow list
+ * - Denied  = union of all layers' deny lists
+ * - A layer with no `allow` is a pass-through (does not restrict the intersection)
+ * - A layer with an empty `allow` after expansion = no tools allowed
+ *
+ * All group references (e.g. `group:fs`) are expanded before intersection.
+ */
+export function intersectToolPolicies(policies: Array<ToolPolicyLike | undefined>): ToolPolicyLike {
+  const defined = policies.filter((p): p is ToolPolicyLike => p != null);
+  if (defined.length === 0) return {};
+
+  // Expand and collect allow lists from layers that specify one
+  const allowSets: Set<string>[] = [];
+  for (const p of defined) {
+    if (p.allow != null) {
+      allowSets.push(new Set(expandToolGroups(p.allow)));
+    }
+  }
+
+  // Deny = union of all deny lists
+  const denyEntries: string[] = [];
+  for (const p of defined) {
+    if (p.deny) denyEntries.push(...expandToolGroups(p.deny));
+  }
+  const deny = denyEntries.length > 0 ? Array.from(new Set(denyEntries)) : undefined;
+
+  // Allow = intersection of all layers with allow lists
+  let allow: string[] | undefined;
+  if (allowSets.length > 0) {
+    let intersection = allowSets[0];
+    for (let i = 1; i < allowSets.length; i++) {
+      intersection = new Set([...intersection].filter((x) => allowSets[i].has(x)));
+    }
+    allow = Array.from(intersection);
+  }
+
+  return { allow, deny };
+}

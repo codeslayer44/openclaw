@@ -12,6 +12,8 @@ export type InboundLastRouteUpdate = {
   to: string;
   accountId?: string;
   threadId?: string | number;
+  senderId?: string;
+  senderName?: string;
 };
 
 export async function recordInboundSession(params: {
@@ -42,6 +44,8 @@ export async function recordInboundSession(params: {
       to: update.to,
       accountId: update.accountId,
       threadId: update.threadId,
+      senderId: update.senderId,
+      senderName: update.senderName,
     },
     ctx,
     groupResolution,

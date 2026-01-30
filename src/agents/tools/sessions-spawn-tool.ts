@@ -19,6 +19,7 @@ import { buildSubagentSystemPrompt } from "../subagent-announce.js";
 import { registerSubagentRun } from "../subagent-registry.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
+import { resolveDelegationOverride, type UserTier } from "../user-tier.js";
 import {
   resolveDisplaySessionKey,
   resolveInternalSessionKey,
@@ -69,6 +70,8 @@ export function createSessionsSpawnTool(opts?: {
   sandboxed?: boolean;
   /** Explicit agent ID override for cron/hook sessions where session key parsing may not work. */
   requesterAgentIdOverride?: string;
+  /** User tier for delegation model/thinking override. */
+  userTier?: UserTier;
 }): AnyAgentTool {
   return {
     label: "Sessions",
@@ -160,7 +163,7 @@ export function createSessionsSpawnTool(opts?: {
       const childSessionKey = `agent:${targetAgentId}:subagent:${crypto.randomUUID()}`;
       const spawnedByKey = requesterInternalKey;
       const targetAgentConfig = resolveAgentConfig(cfg, targetAgentId);
-      const resolvedModel =
+      let resolvedModel =
         normalizeModelSelection(modelOverride) ??
         normalizeModelSelection(targetAgentConfig?.subagents?.model) ??
         normalizeModelSelection(cfg.agents?.defaults?.subagents?.model);
@@ -176,6 +179,17 @@ export function createSessionsSpawnTool(opts?: {
           });
         }
         thinkingOverride = normalized;
+      }
+
+      // User tier delegation override: default users get Sonnet with high thinking.
+      // Only applied when a user tier is explicitly set (messaging platform users).
+      // API/WebSocket clients without a tier are unaffected.
+      if (opts?.userTier) {
+        const delegationOverride = resolveDelegationOverride(opts.userTier, cfg);
+        if (delegationOverride) {
+          if (delegationOverride.model) resolvedModel = delegationOverride.model;
+          if (delegationOverride.thinking) thinkingOverride = delegationOverride.thinking;
+        }
       }
       if (resolvedModel) {
         try {

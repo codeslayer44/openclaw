@@ -13,12 +13,19 @@ export {
   applySkillEnvOverrides,
   applySkillEnvOverridesFromSnapshot,
 } from "./skills/env-overrides.js";
+export { createSkillMemoryWriteTool, executeSkillMemoryWrite } from "./skills/memory-write.js";
+export type { SkillMemoryContext } from "./skills/memory-write.js";
+export { SkillPermissionLogger } from "./skills/permission-log.js";
+export type { SkillExclusionEntry } from "./skills/permission-log.js";
 export type {
   MoltbotSkillMetadata,
   SkillEligibilityContext,
   SkillCommandSpec,
   SkillEntry,
   SkillInstallSpec,
+  SkillMemoryWriteEntry,
+  SkillPermissions,
+  SkillScope,
   SkillSnapshot,
   SkillsInstallPreferences,
 } from "./skills/types.js";
@@ -27,8 +34,10 @@ export {
   buildWorkspaceSkillsPrompt,
   buildWorkspaceSkillCommandSpecs,
   filterWorkspaceSkillEntries,
+  loadSkillMemory,
   loadWorkspaceSkillEntries,
   resolveSkillsPromptForRun,
+  sanitizeForFilename,
   syncSkillsToWorkspace,
 } from "./skills/workspace.js";
 

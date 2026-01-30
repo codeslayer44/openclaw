@@ -25,6 +25,40 @@ describe("delivery context helpers", () => {
     expect(normalizeDeliveryContext({ channel: "  " })).toBeUndefined();
   });
 
+  it("normalizes senderId and senderName", () => {
+    expect(
+      normalizeDeliveryContext({
+        channel: "telegram",
+        to: "123",
+        senderId: " 7338489031 ",
+        senderName: " Ryan ",
+      }),
+    ).toEqual({
+      channel: "telegram",
+      to: "123",
+      senderId: "7338489031",
+      senderName: "Ryan",
+    });
+
+    // Empty senderId/senderName are dropped
+    expect(
+      normalizeDeliveryContext({
+        channel: "telegram",
+        to: "123",
+        senderId: "  ",
+        senderName: "",
+      }),
+    ).toEqual({
+      channel: "telegram",
+      to: "123",
+    });
+
+    // senderId alone keeps context alive
+    expect(normalizeDeliveryContext({ senderId: "7338489031" })).toEqual({
+      senderId: "7338489031",
+    });
+  });
+
   it("merges primary values over fallback", () => {
     const merged = mergeDeliveryContext(
       { channel: "whatsapp", to: "channel:abc" },
@@ -35,6 +69,20 @@ describe("delivery context helpers", () => {
       channel: "whatsapp",
       to: "channel:abc",
       accountId: "acct",
+    });
+  });
+
+  it("merges senderId and senderName with fallback", () => {
+    const merged = mergeDeliveryContext(
+      { channel: "telegram", to: "123", senderId: "7338489031" },
+      { channel: "slack", to: "456", senderId: "U01ABC", senderName: "Fallback Name" },
+    );
+
+    expect(merged).toEqual({
+      channel: "telegram",
+      to: "123",
+      senderId: "7338489031",
+      senderName: "Fallback Name",
     });
   });
 
@@ -99,5 +147,43 @@ describe("delivery context helpers", () => {
     expect(normalized.lastTo).toBe("+1555");
     expect(normalized.lastAccountId).toBe("acct-2");
     expect(normalized.lastThreadId).toBe("444");
+  });
+
+  it("mirrors senderId and senderName on session entries", () => {
+    const normalized = normalizeSessionDeliveryFields({
+      deliveryContext: {
+        channel: "telegram",
+        to: "123",
+        senderId: "7338489031",
+        senderName: "Ryan",
+      },
+    });
+
+    expect(normalized.deliveryContext).toEqual({
+      channel: "telegram",
+      to: "123",
+      senderId: "7338489031",
+      senderName: "Ryan",
+    });
+    expect(normalized.lastSenderId).toBe("7338489031");
+    expect(normalized.lastSenderName).toBe("Ryan");
+  });
+
+  it("merges lastSenderId/lastSenderName from session source", () => {
+    const normalized = normalizeSessionDeliveryFields({
+      lastChannel: "telegram",
+      lastTo: "123",
+      lastSenderId: "7338489031",
+      lastSenderName: "Ryan",
+    });
+
+    expect(normalized.deliveryContext).toEqual({
+      channel: "telegram",
+      to: "123",
+      senderId: "7338489031",
+      senderName: "Ryan",
+    });
+    expect(normalized.lastSenderId).toBe("7338489031");
+    expect(normalized.lastSenderName).toBe("Ryan");
   });
 });
