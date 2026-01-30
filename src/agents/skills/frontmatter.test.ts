@@ -20,7 +20,7 @@ describe("resolveSkillInvocationPolicy", () => {
 });
 
 describe("parseSkillPermissions", () => {
-  it("returns defaults when no ## Permissions section exists", () => {
+  it("returns undefined when no ## Permissions section exists", () => {
     const content = `---
 name: test-skill
 description: A test skill
@@ -31,11 +31,7 @@ description: A test skill
 Some content here.
 `;
     const result = parseSkillPermissions(content);
-    expect(result).toEqual({
-      scope: "conversation-only",
-      delegation: "opus",
-      external: "none",
-    });
+    expect(result).toBeUndefined();
   });
 
   it("parses scope: conversation-only", () => {

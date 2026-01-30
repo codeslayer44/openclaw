@@ -306,7 +306,12 @@ export function buildWorkspaceSkillSnapshot(
   const resolvedSkills = promptEntries.map((entry) => entry.skill);
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
   const prompt = [remoteNote, formatSkillsForPrompt(resolvedSkills)].filter(Boolean).join("\n");
-  const activePermissions = resolveEffectiveSkillPermissions(eligible);
+  // NOTE: activePermissions is intentionally NOT pre-computed from the skill
+  // index. The design specifies per-skill enforcement — permissions apply when
+  // a specific skill is activated, not globally from all indexed skills.
+  // Pre-computing the intersection of all skills' permissions would lock the
+  // session to the most restrictive skill's scope (e.g., a conversation-only
+  // chef skill would prevent the agent from using ANY tools).
   return {
     prompt,
     skills: eligible.map((entry) => ({
@@ -315,7 +320,6 @@ export function buildWorkspaceSkillSnapshot(
     })),
     resolvedSkills,
     version: opts?.snapshotVersion,
-    activePermissions,
   };
 }
 

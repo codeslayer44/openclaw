@@ -170,8 +170,13 @@ function parseBracketList(raw: string): string[] | undefined {
 /**
  * Extract the `## Permissions` section from SKILL.md content and return the lines
  * between the heading and the next `##` heading (or EOF).
+ *
+ * Returns `{ found: true, content }` when the heading exists (content may be empty),
+ * or `{ found: false }` when the heading is absent entirely.
  */
-function extractPermissionsSection(content: string): string | undefined {
+function extractPermissionsSection(
+  content: string,
+): { found: true; content?: string } | { found: false } {
   const lines = content.split("\n");
   let startIndex = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -180,7 +185,7 @@ function extractPermissionsSection(content: string): string | undefined {
       break;
     }
   }
-  if (startIndex === -1) return undefined;
+  if (startIndex === -1) return { found: false };
 
   let endIndex = lines.length;
   for (let i = startIndex; i < lines.length; i++) {
@@ -191,7 +196,7 @@ function extractPermissionsSection(content: string): string | undefined {
   }
 
   const section = lines.slice(startIndex, endIndex).join("\n").trim();
-  return section || undefined;
+  return { found: true, content: section || undefined };
 }
 
 /**
@@ -209,13 +214,16 @@ function extractPermissionsSection(content: string): string | undefined {
  * external: read
  * ```
  *
- * Returns the default permissions if no `## Permissions` section exists.
+ * Returns `undefined` if no `## Permissions` heading exists (skill does not
+ * participate in permission enforcement). Returns defaults if the heading
+ * exists but is empty (skill opted in with no overrides).
  */
-export function parseSkillPermissions(content: string): SkillPermissions {
-  const section = extractPermissionsSection(content);
-  if (!section) return { ...DEFAULT_SKILL_PERMISSIONS };
+export function parseSkillPermissions(content: string): SkillPermissions | undefined {
+  const extracted = extractPermissionsSection(content);
+  if (!extracted.found) return undefined;
+  if (!extracted.content) return { ...DEFAULT_SKILL_PERMISSIONS };
 
-  const lines = section.split("\n");
+  const lines = extracted.content.split("\n");
   let scope: SkillScope = "conversation-only";
   let delegation: SkillPermissions["delegation"] = "opus";
   let external: SkillPermissions["external"] = "none";
