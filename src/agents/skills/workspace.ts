@@ -223,6 +223,18 @@ function loadSkillEntries(
     } catch {
       // ignore malformed skills
     }
+    // Warn for non-bundled skills missing frontmatter — catches manually-created
+    // SKILL.md files that forgot the --- delimiters.
+    if (
+      rawContent &&
+      Object.keys(frontmatter).length === 0 &&
+      (!bundledSkillsDir || !skill.filePath.startsWith(bundledSkillsDir))
+    ) {
+      skillsLogger.warn(
+        `skill "${skill.name}" has no frontmatter block (${skill.filePath}). ` +
+          `Add a YAML frontmatter block (--- delimiters) with at least "description" for proper indexing.`,
+      );
+    }
     return {
       skill,
       frontmatter,

@@ -28,4 +28,32 @@ describe("ensureSkillsWatcher", () => {
     expect(ignored.some((re) => re.test("/tmp/workspace/skills/.git/config"))).toBe(true);
     expect(ignored.some((re) => re.test("/tmp/.hidden/skills/index.md"))).toBe(false);
   });
+
+  it("bumps snapshot version on watcher creation (startup)", async () => {
+    const mod = await import("./refresh.js");
+    const workspaceDir = "/tmp/workspace-startup-test";
+
+    // Before creating a watcher, version should be 0
+    expect(mod.getSkillsSnapshotVersion(workspaceDir)).toBe(0);
+
+    mod.ensureSkillsWatcher({ workspaceDir });
+
+    // After creating the watcher, version should be > 0
+    const version = mod.getSkillsSnapshotVersion(workspaceDir);
+    expect(version).toBeGreaterThan(0);
+  });
+
+  it("does not re-bump version when watcher already exists", async () => {
+    const mod = await import("./refresh.js");
+    const workspaceDir = "/tmp/workspace-no-rebump-test";
+
+    mod.ensureSkillsWatcher({ workspaceDir });
+    const firstVersion = mod.getSkillsSnapshotVersion(workspaceDir);
+
+    // Second call with same config should not bump again
+    mod.ensureSkillsWatcher({ workspaceDir });
+    const secondVersion = mod.getSkillsSnapshotVersion(workspaceDir);
+
+    expect(secondVersion).toBe(firstVersion);
+  });
 });

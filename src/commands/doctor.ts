@@ -43,6 +43,7 @@ import {
 import { createDoctorPrompter, type DoctorOptions } from "./doctor-prompter.js";
 import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-sandbox.js";
 import { noteSecurityWarnings } from "./doctor-security.js";
+import { noteSkillFrontmatterHealth } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import {
   detectLegacyStateMigrations,
@@ -257,6 +258,7 @@ export async function doctorCommand(
   }
 
   noteWorkspaceStatus(cfg);
+  noteSkillFrontmatterHealth(cfg);
 
   const { healthOk } = await checkGatewayHealth({
     runtime,

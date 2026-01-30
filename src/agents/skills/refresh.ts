@@ -9,7 +9,7 @@ import { resolvePluginSkillDirs } from "./plugin-skills.js";
 
 type SkillsChangeEvent = {
   workspaceDir?: string;
-  reason: "watch" | "manual" | "remote-node";
+  reason: "watch" | "manual" | "remote-node" | "startup";
   changedPath?: string;
 };
 
@@ -164,4 +164,11 @@ export function ensureSkillsWatcher(params: { workspaceDir: string; config?: Mol
   });
 
   watchers.set(workspaceDir, state);
+
+  // Bump version on watcher creation so cached session snapshots rebuild
+  // after a gateway restart. The chokidar watcher uses ignoreInitial: true,
+  // so pre-existing skills don't fire add events. Without this bump,
+  // globalVersion stays 0 and the refresh condition (snapshotVersion > 0)
+  // in ensureSkillSnapshot() never triggers.
+  bumpSkillsSnapshotVersion({ workspaceDir, reason: "startup" });
 }
