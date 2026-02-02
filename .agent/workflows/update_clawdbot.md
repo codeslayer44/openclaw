@@ -6,6 +6,18 @@ description: Update Clawdbot from upstream when branch has diverged (ahead/behin
 
 Use this workflow when your fork has diverged from upstream (e.g., "18 commits ahead, 29 commits behind").
 
+## CRITICAL SAFETY RULES
+
+**NEVER run any of these commands:**
+- `git reset --hard upstream/main` — destroys local commits that may not be upstream yet
+- `git reset --hard origin/main` — same risk
+- `git checkout upstream/main` then `git reset` — same result
+- Any `git reset --hard` to a remote ref
+
+**If rebase conflicts and you cannot resolve them, STOP and alert Ryan.** Do not
+attempt to work around a failed rebase by resetting to upstream. Local commits
+may contain critical fixes that have not yet been merged upstream.
+
 ## Quick Reference
 
 ```bash
@@ -33,6 +45,10 @@ This shows:
 - `<` = your local commits (ahead)
 - `>` = upstream commits you're missing (behind)
 
+**Before proceeding:** If there are local commits ahead of upstream, verify whether
+they exist in open PRs or have been merged upstream. If not, they are local-only
+and must be preserved.
+
 **Decision point:**
 
 - Few local commits, many upstream → **Rebase** (cleaner history)
@@ -47,6 +63,9 @@ Replays your commits on top of upstream. Results in linear history.
 ```bash
 # Ensure working tree is clean
 git status
+
+# Create a backup branch BEFORE rebasing in case something goes wrong
+git branch backup/pre-rebase-$(date +%Y%m%d-%H%M%S)
 
 # Rebase onto upstream
 git rebase upstream/main
@@ -66,8 +85,9 @@ git rebase --continue
 # If a commit is no longer needed (already in upstream):
 git rebase --skip
 
-# To abort and return to original state:
+# If conflicts are too complex to resolve:
 git rebase --abort
+# Then STOP and alert Ryan. Do NOT fall back to git reset --hard.
 ```
 
 ### Common Conflict Patterns
@@ -345,8 +365,19 @@ git fetch upstream
 echo "==> Current divergence:"
 git rev-list --left-right --count main...upstream/main
 
+# Safety: create backup branch before rebase
+BACKUP_BRANCH="backup/pre-rebase-$(date +%Y%m%d-%H%M%S)"
+echo "==> Creating backup branch: $BACKUP_BRANCH"
+git branch "$BACKUP_BRANCH"
+
 echo "==> Rebasing onto upstream/main..."
-git rebase upstream/main
+if ! git rebase upstream/main; then
+    echo "❌ Rebase failed with conflicts. Aborting rebase."
+    git rebase --abort
+    echo "❌ Local commits preserved. Backup branch: $BACKUP_BRANCH"
+    echo "❌ STOP: Alert Ryan to resolve manually. Do NOT reset to upstream."
+    exit 1
+fi
 
 echo "==> Installing dependencies..."
 pnpm install
