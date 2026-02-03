@@ -42,6 +42,7 @@ async function refreshOAuthTokenWithLock(params: {
   ensureAuthStoreFile(authPath);
 
   let release: (() => Promise<void>) | undefined;
+  let cliWriteBack: OAuthCredentials | undefined;
   try {
     release = await lockfile.lock(authPath, {
       ...AUTH_STORE_LOCK_OPTIONS,
@@ -94,20 +95,11 @@ async function refreshOAuthTokenWithLock(params: {
     };
     saveAuthProfileStore(store, params.agentDir);
 
-    // Keep Claude CLI credentials file in sync after refresh.
-    // Check the updated store entry (not pre-refresh cred) in case the provider was relabelled.
+    // Defer Claude CLI write-back until after the auth store lock is released
+    // to avoid holding the lock during potentially slow filesystem/keychain operations.
     const refreshedCred = store.profiles[params.profileId];
     if (params.profileId === CLAUDE_CLI_PROFILE_ID && refreshedCred?.provider === "anthropic") {
-      try {
-        const written = writeClaudeCliCredentials(result.newCredentials);
-        if (!written) {
-          log.warn("write-back to claude cli returned false (file missing or structure invalid)");
-        }
-      } catch (error) {
-        log.warn("failed to write back refreshed credentials to claude cli", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      cliWriteBack = result.newCredentials;
     }
 
     return result;
@@ -117,6 +109,19 @@ async function refreshOAuthTokenWithLock(params: {
         await release();
       } catch {
         // ignore unlock errors
+      }
+    }
+    // Write back Claude CLI credentials after releasing the auth store lock.
+    if (cliWriteBack) {
+      try {
+        const written = writeClaudeCliCredentials(cliWriteBack);
+        if (!written) {
+          log.warn("write-back to claude cli returned false (file missing or structure invalid)");
+        }
+      } catch (error) {
+        log.warn("failed to write back refreshed credentials to claude cli", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }
