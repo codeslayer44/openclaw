@@ -9,6 +9,7 @@ Use this workflow when your fork has diverged from upstream (e.g., "18 commits a
 ## CRITICAL SAFETY RULES
 
 **NEVER run any of these commands:**
+
 - `git reset --hard upstream/main` — destroys local commits that may not be upstream yet
 - `git reset --hard origin/main` — same risk
 - `git checkout upstream/main` then `git reset` — same result
