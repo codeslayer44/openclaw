@@ -81,6 +81,7 @@
 
 ## Commit & Pull Request Guidelines
 
+- **Upstream deviation check:** after every commit, run `git rev-list --left-right --count upstream/main...HEAD` and report the result (e.g. "upstream: 0 behind, 3 ahead"). This keeps the operator aware of how far the local fork has drifted from `openclaw/openclaw`. If behind, note it; if significantly ahead, list the divergent commits.
 - Create commits with `scripts/committer "<msg>" <file...>`; avoid manual `git add`/`git commit` so staging stays scoped.
 - Follow concise, action-oriented commit messages (e.g., `CLI: add verbose flag to send`).
 - Group related changes; avoid bundling unrelated refactors.
