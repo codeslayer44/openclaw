@@ -3,7 +3,7 @@ import type { ChannelId } from "../../channels/plugins/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { ResolvedMessagingTarget } from "./target-resolver.js";
 import { getChannelPlugin } from "../../channels/plugins/index.js";
-import { recordSessionMetaFromInbound, resolveStorePath } from "../../config/sessions.js";
+import { resolveStorePath, updateLastRoute } from "../../config/sessions.js";
 import { parseDiscordTarget } from "../../discord/targets.js";
 import { parseIMessageTarget, normalizeIMessageHandle } from "../../imessage/targets.js";
 import {
@@ -918,9 +918,17 @@ export async function ensureOutboundSessionEntry(params: {
     OriginatingTo: params.route.to,
   };
   try {
-    await recordSessionMetaFromInbound({
+    // Use updateLastRoute (not recordSessionMetaFromInbound) so the session's
+    // deliveryContext is populated with channel, to, **and accountId**.
+    // Without this, per-peer DM sessions created via outbound sends would
+    // lack accountId, causing replies to route through the wrong account.
+    await updateLastRoute({
       storePath,
       sessionKey: params.route.sessionKey,
+      channel: params.channel,
+      to: params.route.to,
+      accountId: params.accountId ?? undefined,
+      threadId: params.route.threadId,
       ctx,
     });
   } catch {
